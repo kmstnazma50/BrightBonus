@@ -452,7 +452,7 @@
 <div class="main-container">
   <div class="content-area">
     <div class="hero">
-      <h1><i class="fas fa-crown"></i> PREMIUM BONUS OFFER<i class="fas fa-gem"></i></h1>
+      <h1><i class="fas fa-crown"></i> PREMIUM OFFER VAULT <i class="fas fa-gem"></i></h1>
     </div>
 
     <div class="mobile-tier-bar" id="mobileTierBar">
@@ -549,35 +549,81 @@
     "leaf", "dice-d6", "bow-arrow", "shield-halbed", "shield-alt"
   ];
 
-  function getOfferName(idx) {
-    return OFFER_NAMES[idx % OFFER_NAMES.length];
-  }
-  function getOfferIcon(idx) {
-    return OFFER_ICONS[idx % OFFER_ICONS.length];
+  // ========== RANDOM SHUFFLE FUNCTION ==========
+  // Fisher-Yates shuffle algorithm
+  function shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
   }
 
-  // 10 tiers, each with 3 offers
-  const TIER_OFFERS = {};
-  for (let i = 0; i < 10; i++) {
-    TIER_OFFERS[i+1] = [];
-    for (let j = 0; j < 3; j++) {
-      const linkIdx = i * 3 + j;
-      TIER_OFFERS[i+1].push({
-        name: getOfferName(linkIdx),
-        icon: getOfferIcon(linkIdx),
-        link: ALL_LINKS[linkIdx]
+  // Generate random order for this user (stored in localStorage)
+  function getRandomOrder() {
+    const RANDOM_ORDER_KEY = "premiumOfferRandomOrderV1";
+    const savedOrder = localStorage.getItem(RANDOM_ORDER_KEY);
+    if (savedOrder) {
+      try {
+        const parsed = JSON.parse(savedOrder);
+        if (parsed.length === 30) return parsed;
+      } catch(e) {}
+    }
+    
+    // Create array [0,1,2,...,29] and shuffle
+    const order = Array.from({length: 30}, (_, i) => i);
+    shuffleArray(order);
+    localStorage.setItem(RANDOM_ORDER_KEY, JSON.stringify(order));
+    return order;
+  }
+
+  // Get shuffled offers based on random order
+  function getShuffledOffers() {
+    const order = getRandomOrder();
+    const shuffledOffers = [];
+    for (let i = 0; i < 30; i++) {
+      const originalIdx = order[i];
+      shuffledOffers.push({
+        name: OFFER_NAMES[originalIdx % OFFER_NAMES.length],
+        icon: OFFER_ICONS[originalIdx % OFFER_ICONS.length],
+        link: ALL_LINKS[originalIdx],
+        originalIndex: originalIdx
       });
     }
+    return shuffledOffers;
   }
+
+  // Split shuffled offers into 10 tiers (each tier 3 offers)
+  function buildTiersFromShuffled(shuffledOffers) {
+    const tiers = {};
+    for (let i = 0; i < 10; i++) {
+      tiers[i+1] = shuffledOffers.slice(i * 3, i * 3 + 3);
+    }
+    return tiers;
+  }
+
+  // Get shuffled tiers (persistent per user)
+  let shuffledTiers = null;
+  function getShuffledTiers() {
+    if (shuffledTiers) return shuffledTiers;
+    const shuffledOffers = getShuffledOffers();
+    shuffledTiers = buildTiersFromShuffled(shuffledOffers);
+    return shuffledTiers;
+  }
+
+  const TIER_OFFERS = getShuffledTiers();
 
   const TOTAL_OFFERS = 30;
   let clickCounts = new Array(TOTAL_OFFERS).fill(0);
   let claimedStatus = new Array(TOTAL_OFFERS).fill(false);
-  const STORAGE_KEY = "premiumOfferVaultHardLockV3";
-  const CLAIMED_KEY = "premiumOfferClaimedStatusV3";
+  const STORAGE_KEY = "premiumOfferHardLockV4";
+  const CLAIMED_KEY = "premiumOfferClaimedStatusV4";
 
   function getGlobalIndex(tier, localIdx) {
-    return (tier-1) * 3 + localIdx;
+    // Global index based on shuffled order mapping
+    // We need to map from tier+localIdx to the original offer index
+    const offer = TIER_OFFERS[tier][localIdx];
+    return offer.originalIndex;
   }
 
   function loadCounts() {
@@ -618,7 +664,7 @@
     levelBadge.innerText = "3 Offers";
 
     offers.forEach((offer, localIdx) => {
-      const globalIdx = getGlobalIndex(currentTier, localIdx);
+      const globalIdx = offer.originalIndex;
       const count = clickCounts[globalIdx];
       const isClaimed = claimedStatus[globalIdx];
       const isClicked = count > 0;
